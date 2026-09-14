@@ -19,6 +19,11 @@
       "name": "Clear Look",
       "number": "010-234567",
       "id": "8OeTGZaZvwI"
+    },
+    {
+      "name": "likeli",
+      "number": "11233456563",
+      "id": "14asLK08DJ0"
     }
   ],
   "$schema": "./node_modules/json-server/schema.json"
