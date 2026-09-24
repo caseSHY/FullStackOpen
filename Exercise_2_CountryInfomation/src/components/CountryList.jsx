@@ -1,3 +1,4 @@
+import Weather from "./Weather.jsx";
 const CountryList = ({ countries, search, setSearch }) => {
   const filteredCountries = countries.filter((country) =>
     country.name.common.toLowerCase().includes(search.toLowerCase()),
@@ -40,6 +41,10 @@ const CountryList = ({ countries, search, setSearch }) => {
             .map((currency) => currency.name)
             .join(", ")}
         </p>
+        <Weather
+          key={filteredCountries[0].cca2}
+          country={filteredCountries[0]}
+        />
       </div>
     );
   }
