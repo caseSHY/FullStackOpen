@@ -1,0 +1,17 @@
+{
+  "name": "backend",
+  "version": "0.0.1",
+  "description": "",
+  "license": "MIT",
+  "author": "Si Hongyang",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node --watch index.js",
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}

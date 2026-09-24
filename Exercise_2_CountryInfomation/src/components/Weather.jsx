@@ -74,9 +74,16 @@ const Weather = ({ country }) => {
    * --------------------------------------------------------------------------
    * useEffect：组件挂载后发起请求
    * --------------------------------------------------------------------------
-   * 【依赖数组】[country.cca2]
-   *   cca2 是国家唯一代码（如 "CN"）。它变化时 effect 重新执行。
-   *   配合父组件的 key，切换国家时实际上是"旧组件卸载 + 新组件挂载"。
+   * 【依赖数组】[country]
+   *   必须写【整个 country 对象】而不是 country.cca2：
+   *   effect 里调用的是 getCurrentByCountry(country)，读的是整个对象；
+   *   ESLint 的 exhaustive-deps 规则认为"属性"不等于"对象"——cca2 不变不代表
+   *   country 没变，所以写 [country.cca2] 会报 missing dependency: 'country'。
+   *   规则：effect 里用到 obj.prop 就可依赖 obj.prop；用到 obj 整体就必须依赖 obj。
+   *
+   *   country 来自父组件对 countries 的 filter，是同一份对象引用（countries 不变则引用不变），
+   *   所以不会造成 effect 反复执行。
+   *   同时父组件还有 key={country.cca2}，切换国家时会重新挂载，state 自动回到 loading。
    *
    * 【ignore 变量的作用：防竞态】
    *   场景：请求 A 还没回来，用户又切到国家 B。
@@ -111,7 +118,7 @@ const Weather = ({ country }) => {
     return () => {
       ignore = true;
     };
-  }, [country.cca2]);
+  }, [country]);
 
   /**
    * --------------------------------------------------------------------------
