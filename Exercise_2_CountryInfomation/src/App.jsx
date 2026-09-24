@@ -12,13 +12,18 @@ const App = () => {
   useEffect(() => {
     countryService.getAll().then((countries) => setCountries(countries));
   }, []);
+
   return (
     <div>
       <h1>Country Information</h1>
       <p>Welcome to the Country Information App!</p>
       <p>Search for a country:</p>
       <input type="text" value={search} onChange={handleChange} />
-      <CountryList countries={countries} search={search} />
+      <CountryList
+        countries={countries}
+        search={search}
+        setSearch={setSearch}
+      />
     </div>
   );
 };

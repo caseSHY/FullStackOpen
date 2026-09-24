@@ -1,4 +1,4 @@
-const CountryList = ({ countries, search }) => {
+const CountryList = ({ countries, search, setSearch }) => {
   const filteredCountries = countries.filter((country) =>
     country.name.common.toLowerCase().includes(search.toLowerCase()),
   );
@@ -48,6 +48,9 @@ const CountryList = ({ countries, search }) => {
       {filteredCountries.map((country) => (
         <div key={country.cca2}>
           <p>{country.name.common}</p>
+          <button onClick={() => setSearch(country.name.common)}>
+            查看详情
+          </button>
         </div>
       ))}
     </div>
