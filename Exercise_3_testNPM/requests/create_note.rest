@@ -1,9 +1,0 @@
-# 新增一条笔记：POST + JSON 请求体（VS Code 安装 REST Client 插件后，点击 Send Request 发送）
-# Content-Type 必须声明为 application/json，否则服务器端的 express.json() 中间件不会解析请求体
-POST http://localhost:3001/api/notes
-Content-Type: application/json
-
-{
-  "content": "这是一个新笔记",
-  "important": true
-}

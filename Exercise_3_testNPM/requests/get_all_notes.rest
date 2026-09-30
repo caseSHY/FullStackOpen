@@ -1,4 +1,0 @@
-## 获取所有笔记
-# 服务器返回 notes 数组的 JSON 形式；新增笔记后再次发送此请求可看到列表变化
-GET http://localhost:3001/api/notes
-
