@@ -1,0 +1,15 @@
+# 新增一条联系人（VS Code 安装 REST Client 插件后，点击 Send Request 发送）
+# 【关键】Content-Type 必须声明为 application/json：
+# express.json() 中间件只解析声明了这个头的请求体，缺了它 request.body 就是 undefined，
+# 服务端读 body.name 会抛 "Cannot read properties of undefined" 并返回 500。
+# 成功返回 200 和新建的联系人（含服务端生成的 id）
+@name = Hulu
+@number = 040-123456
+
+POST http://localhost:3001/api/persons
+Content-Type: application/json
+
+{
+  "name": "{{name}}",
+  "number": "{{number}}"
+}

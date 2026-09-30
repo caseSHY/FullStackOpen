@@ -1,0 +1,8 @@
+# 删除单条联系人（VS Code 安装 REST Client 插件后，点击 Send Request 发送）
+# id 写在 URL 路径里，服务端从 request.params.id 取值，DELETE 不需要请求体
+# 【注意】@id 的值不要加引号！变量是纯文本替换，写 "1" 会把引号一起拼进 URL，
+# 变成 /api/persons/"1"，服务端比对不上 id，返回 204 但实际什么都没删。
+# 删除成功返回 204 No Content（无响应体）
+@id = 1
+
+DELETE http://localhost:3001/api/persons/{{id}}
