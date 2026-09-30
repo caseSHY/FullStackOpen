@@ -4,7 +4,7 @@ require("dotenv").config();
 // 【曾经的 Bug】写成 const app = require("express")(); 直接链式调用生成 app，
 // 但 express 模块没被保存，使用 express.json() 时抛 ReferenceError: express is not defined。
 const express = require("express");
-const cors = require("cors");
+const path = require("path");
 const crypto = require("crypto"); // Node 内置模块，无需 npm install
 const morgan = require("morgan");
 const app = express();
@@ -13,7 +13,7 @@ const app = express();
 // express.json() 在请求头声明 Content-Type: application/json 时，把请求体解析成 JS 对象挂到 request.body 上。
 // 【曾经的 Bug】少了这一行，request.body 是 undefined，POST 路由里读 body.name 抛
 // "Cannot read properties of undefined (reading 'name')"，请求返回 500。
-app.use(cors());
+
 app.use(express.json());
 // morgan 日志中间件：格式 = tiny 的内容 + 末尾追加请求体（"函数格式"写法）。
 // 【为什么不写 morgan.token("body", ...) + 字符串格式？】morgan 1.12+ 会把每个自定义
@@ -25,10 +25,12 @@ app.use(
   morgan((tokens, request, response) => {
     return [
       (tokens.method(request, response) || "-").padEnd(7), // 最长 DELETE=6，留 7
-      (tokens.url(request, response) || "-").padEnd(16), // URL 最长路径，留余量
+      (tokens.url(request, response) || "-").padEnd(50), // URL 最长路径，留余量
       (tokens.status(request, response) || " ").padEnd(4),
-      (tokens.res(request, response, "content-length") || "N/A").padStart(6), // 数字右对齐
-      (tokens["response-time"](request, response) || "N/A").padStart(12), // 数字右对齐
+      String(tokens.res(request, response, "content-length") ?? "N/A").padStart(
+        6,
+      ), // 数字右对齐
+      String(tokens["response-time"](request, response) || "N/A").padStart(12), // 数字右对齐
       "ms",
       "  ",
       request.body ? JSON.stringify(request.body) : "N/A",
@@ -143,7 +145,17 @@ app.delete("/api/persons/:id", (request, response) => {
   response.status(204).end();
 });
 
-const PORT = process.env.PORT || 3000;
+// ===== 前端生产构建托管（3.11）=====
+// 托管 dist 目录：浏览器请求非 /api 的静态资源（/、/assets/xxx.js）从这里找
+const distDir = path.join(__dirname, "dist");
+app.use(express.static(distDir));
+
+// SPA 回退：以上全部未命中的 GET 请求，返回 index.html 由前端路由接管
+app.use((_request, response) => {
+  response.sendFile(path.join(distDir, "index.html"));
+});
+
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
