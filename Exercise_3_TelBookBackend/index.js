@@ -1,3 +1,4 @@
+require("dotenv").config();
 // require("express") 返回的是 Express 模块本身，先存进变量 express；
 // 再调用 express() 生成应用实例 app。两步分开写，后面才能用到 express.json() 等模块方法。
 // 【曾经的 Bug】写成 const app = require("express")(); 直接链式调用生成 app，
@@ -142,7 +143,7 @@ app.delete("/api/persons/:id", (request, response) => {
   response.status(204).end();
 });
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
