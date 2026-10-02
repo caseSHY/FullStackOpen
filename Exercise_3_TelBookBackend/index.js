@@ -1,36 +1,32 @@
+// ① 加载 .env 到 process.env（必须在最顶行，后面才能读到 MONGODB_URI / PORT）
 require("dotenv").config();
-// require("express") 返回的是 Express 模块本身，先存进变量 express；
-// 再调用 express() 生成应用实例 app。两步分开写，后面才能用到 express.json() 等模块方法。
-// 【曾经的 Bug】写成 const app = require("express")(); 直接链式调用生成 app，
-// 但 express 模块没被保存，使用 express.json() 时抛 ReferenceError: express is not defined。
+
 const express = require("express");
-const path = require("path");
-const crypto = require("crypto"); // Node 内置模块，无需 npm install
-const morgan = require("morgan");
+const path = require("path"); // Node 内置路径模块：定位 dist 目录用
+const morgan = require("morgan"); // HTTP 请求日志
+const mongoose = require("mongoose"); // MongoDB ODM：JS 对象 ↔ 数据库集合
+const Person = require("./models/person"); // 共享 Person 模型
+
 const app = express();
 
-// 注册"中间件"：每个请求先经过它，再流入路由。
-// express.json() 在请求头声明 Content-Type: application/json 时，把请求体解析成 JS 对象挂到 request.body 上。
-// 【曾经的 Bug】少了这一行，request.body 是 undefined，POST 路由里读 body.name 抛
-// "Cannot read properties of undefined (reading 'name')"，请求返回 500。
-
+// ---------- 中间件（按注册顺序自上而下执行） ----------
+// 把 JSON 请求体解析成 JS 对象挂到 request.body；缺了它 POST 的 body 是 undefined
 app.use(express.json());
-// morgan 日志中间件：格式 = tiny 的内容 + 末尾追加请求体（"函数格式"写法）。
-// 【为什么不写 morgan.token("body", ...) + 字符串格式？】morgan 1.12+ 会把每个自定义
-// token 的返回值自动做防日志注入转义（escapeLogField：引号变 \" 等），日志里就会
-// 显示 {\"name\":...}。改用函数格式、直接调 JSON.stringify，绕过 token 包装，
-// 就能显示干净的 JSON（GET 无请求体时显示 -）。
-// ⚠️ 安全提示：日志含原始请求体，生产环境务必先脱敏（GDPR）。
+// morgan 函数格式日志：手动拼接各字段，padEnd/padStart 对齐列；
+// 数字字段必须先 String()/Number() 转换——对齐方法是 String 专属，数字上调用会崩
 app.use(
   morgan((tokens, request, response) => {
     return [
-      (tokens.method(request, response) || "-").padEnd(7), // 最长 DELETE=6，留 7
-      (tokens.url(request, response) || "-").padEnd(50), // URL 最长路径，留余量
+      (tokens.method(request, response) || "-").padEnd(7),
+      (tokens.url(request, response) || "-").padEnd(16),
       (tokens.status(request, response) || " ").padEnd(4),
       String(tokens.res(request, response, "content-length") ?? "N/A").padStart(
         6,
-      ), // 数字右对齐
-      String(tokens["response-time"](request, response) || "N/A").padStart(12), // 数字右对齐
+      ),
+      "-",
+      Number(tokens["response-time"](request, response) ?? 0)
+        .toFixed(3)
+        .padStart(12),
       "ms",
       "  ",
       request.body ? JSON.stringify(request.body) : "N/A",
@@ -38,121 +34,118 @@ app.use(
   }),
 );
 
-// 数据源。用 let 而非 const：删除路由里要 phonebooks = phonebooks.filter(...) 重新赋值，
-// const 只允许修改数组内容、不允许重新指向，重新赋值会抛 Assignment to constant variable。
-let phonebooks = [
-  {
-    id: "1",
-    name: "Arto Hellas",
-    number: "040-123456",
-  },
-  {
-    id: "2",
-    name: "Ada Lovelace",
-    number: "39-44-5323523",
-  },
-  {
-    id: "3",
-    name: "Dan Abramov",
-    number: "12-43-234345",
-  },
-  {
-    id: "4",
-    name: "Mary Poppendieck",
-    number: "39-23-6423122",
-  },
-];
+// ---------- 连接数据库 ----------
+// 【与 mongo.js 的本质区别】index.js 是常驻服务器：启动时连接一次，
+// 永远不调用 connection.close() —— 事件循环必须保持，否则进程退出
+mongoose
+  .connect(process.env.MONGODB_URI)
+  .then(() => console.log("connected to MongoDB"))
+  .catch((error) => console.log("error connecting to MongoDB:", error.message));
 
-app.get("/info", (_request, response) => {
-  const date = new Date();
-  response.send(
-    `<p>Phonebook has info for ${phonebooks.length} people</p><p>${date}</p>`,
-  );
+// ---------- 路由（全部变为异步：数据库操作返回 Promise） ----------
+app.get("/info", (request, response) => {
+  // 条数来自数据库：countDocuments 是异步操作，响应必须在 then 里发
+  Person.countDocuments({}).then((count) => {
+    response.send(`Phonebook has info for ${count} people${new Date()}`);
+  });
 });
 
-app.get("/api/persons", (_request, response) => {
-  // 返回快照副本而非内部数组引用：序列化与后续修改完全隔离，不泄漏内部可变状态
-  response.json([...phonebooks]);
+app.get("/api/persons", (request, response) => {
+  Person.find({}).then((persons) => {
+    response.json(persons); // toJSON 配置保证返回干净的 {id, name, number}
+  });
 });
 
 app.get("/api/persons/:id", (request, response) => {
-  const id = request.params.id;
-  const person = phonebooks.find((person) => person.id === id);
-  if (person) {
-    response.json(person);
-  } else {
-    response.status(404).end("Person not found");
-  }
+  Person.findById(request.params.id)
+    .then((person) => {
+      if (person) {
+        response.json(person);
+      } else {
+        response.status(404).end(); // id 格式合法但不存在
+      }
+    })
+    .catch((error) => {
+      // id 不是合法 ObjectId 格式 → 数据库直接抛 CastError，转成 400
+      if (error.name === "CastError") {
+        return response.status(400).json({ error: "malformatted id" });
+      }
+      response.status(500).json({ error: "internal server error" });
+    });
 });
 
-// 注册路由：POST /api/persons —— 新增一条联系人。
-// 【曾经的 Bug】报错 "Cannot read properties of undefined (reading 'name')"，返回 500。
-// 原因：项目缺少 express.json() 中间件（已在文件顶部补上），请求体不会被解析，
-// request.body 为 undefined，下面的 body.name 就抛 TypeError。
-// 【修复】顶部加 app.use(express.json())；本段代码未动。
-// 注：return 在校验失败时既结束响应又提前退出函数，避免继续往下执行。
+app.delete("/api/persons/:id", (request, response) => {
+  Person.findByIdAndDelete(request.params.id)
+    .then((result) => {
+      // 删除语义：result 非空 = 删到了 → 204；null = id 不存在 → 404
+      response.status(result ? 204 : 404).end();
+    })
+    .catch((error) => {
+      if (error.name === "CastError") {
+        return response.status(400).json({ error: "malformatted id" });
+      }
+      response.status(500).json({ error: "internal server error" });
+    });
+});
+
 app.post("/api/persons", (request, response) => {
   const body = request.body;
-  // 边界加固分两层：
-  // 1) !body：请求没带 Content-Type: application/json 头时 body 是 undefined，直接读属性会 500；
-  // 2) typeof + trim：name/number 必须是"非空白字符串"——数字、对象、纯空格都拒绝。
-  //    【曾经的隐患】只写 !body.name 时，传 123、{}、" " 都能通过校验，脏数据入库后
-  //    重名检查等按字符串比较的逻辑会全部失真。
-  if (
-    !body ||
-    typeof body.name !== "string" ||
-    !body.name.trim() ||
-    typeof body.number !== "string" ||
-    !body.number.trim()
-  ) {
-    return response.status(400).json({
-      error: "name or number missing",
-    });
+
+  if (!body) {
+    // 空请求体（如请求头缺 Content-Type）：先挡住，避免对 undefined 取属性
+    return response.status(400).json({ error: "content missing" });
   }
-  if (phonebooks.some((person) => person.name === body.name)) {
-    return response.status(400).json({
-      error: "name must be unique",
-    });
-  }
-  const person = {
-    // crypto.randomUUID()：Node 内置 UUID 生成器，碰撞概率约等于零。
-    // 【曾经的隐患】Math.floor(Math.random() * 1000000) 只有 100 万种取值，
-    // 数据量增大后可能生成重复 id，导致 GET/:id 返回错人、DELETE 误删多条。
-    id: crypto.randomUUID(),
+
+  const person = new Person({
     name: body.name,
     number: body.number,
-  };
-  phonebooks.push(person);
-  response.json(person);
+  });
+
+  person
+    .save()
+    .then((saved) => {
+      response.json(saved);
+    })
+    .catch((error) => {
+      // 校验失败（ValidationError）、重名（11000）统一转成 400
+      if (error.name === "ValidationError") {
+        return response.status(400).json({ error: error.message });
+      }
+      if (error.code === 11000) {
+        return response.status(400).json({ error: "name must be unique" });
+      }
+      response.status(500).json({ error: "internal server error" });
+    });
 });
 
-// 注册路由：DELETE /api/persons/:id —— 删除单条联系人。
-// 【曾经的 Bug】phonebooks 最初声明为 const，而下一行 filter 后"重新赋值"给 phonebooks，
-// 运行时抛出 TypeError: Assignment to constant variable，请求返回 500。
-// 原因：const 的"常量"指绑定不可变 —— 修改数组内容（push/pop）合法，
-// 重新指向（phonebooks = 新数组）非法；需要重新赋值的场景必须用 let 声明。
-// 【修复】把第 2 行的声明改为 let phonebooks，本行代码本身未动。
-// 另：204 表示"删除成功、无响应正文"，按规范 end() 不携带参数。
-app.delete("/api/persons/:id", (request, response) => {
-  const id = request.params.id;
-  const before = phonebooks.length;
-  phonebooks = phonebooks.filter((person) => person.id !== id);
-  // id 不存在时返回 404，让客户端能区分"删除成功"和"目标本来就不存在"。
-  // 注：Fullstack Open 3.4 明确允许无差别 204 的写法，两种都算对；这里采用更严格的 REST 语义。
-  if (phonebooks.length === before) {
-    return response.status(404).end();
-  }
-  response.status(204).end();
+// 未知 API 端点：只接管 /api 下的未匹配请求（放在所有 API 路由之后）
+app.use("/api", (request, response) => {
+  response.status(404).json({ error: "unknown endpoint" });
 });
 
-// ===== 前端生产构建托管（3.11）=====
-// 托管 dist 目录：浏览器请求非 /api 的静态资源（/、/assets/xxx.js）从这里找
-const distDir = path.join(__dirname, "dist");
+// ---------- 前端生产构建托管（3.11） ----------
+// express.static：按 URL 路径在 dist 里找文件（/ → index.html，/assets/... → 对应文件）
+const distDir = path.join(__dirname, "dist"); // __dirname 锚定文件自身位置，与启动目录无关
 app.use(express.static(distDir));
-
-// SPA 回退：以上全部未命中的 GET 请求，返回 index.html 由前端路由接管
+// SPA 回退：剩余未命中的请求一律返回 index.html，交给前端路由（必须在 API 路由之后）
 app.use((_request, response) => {
   response.sendFile(path.join(distDir, "index.html"));
+});
+
+// ---------- 全局错误处理中间件 ----------
+// 4 参数签名 (error, req, res, next) 是 Express 识别"错误处理器"的标志：
+// 任何路由 next(error) 或抛出的异常都会流到这里（路由内已 catch 的不会到这）
+app.use((error, request, response, next) => {
+  console.error(error.message);
+
+  if (error.name === "CastError") {
+    return response.status(400).json({ error: "malformatted id" });
+  }
+  if (error.name === "ValidationError") {
+    return response.status(400).json({ error: error.message });
+  }
+
+  next(error);
 });
 
 const PORT = process.env.PORT || 3001;
